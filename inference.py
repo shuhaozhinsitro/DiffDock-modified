@@ -41,7 +41,11 @@ parser.add_argument('--inference_steps', type=int, default=20, help='Number of d
 parser.add_argument('--actual_steps', type=int, default=None, help='Number of denoising steps that are actually performed')
 args = parser.parse_args()
 
-os.makedirs(args.out_dir, exist_ok=True)
+if args.out_dir.startswith('s3://'):
+    from redun import File, Dir
+else:
+    os.makedirs(args.out_dir, exist_ok=True)
+
 with open(f'{args.model_dir}/model_parameters.yml') as f:
     score_model_args = Namespace(**yaml.full_load(f))
 if args.confidence_model_dir is not None:
@@ -167,21 +171,46 @@ for idx, orig_complex_graph in tqdm(enumerate(test_loader)):
             ligand_pos = ligand_pos[re_order]
 
         # save predictions
-        write_dir = f'{args.out_dir}/{complex_name_list[idx]}'
-        for rank, pos in enumerate(ligand_pos):
-            mol_pred = copy.deepcopy(lig)
-            if score_model_args.remove_hs: mol_pred = RemoveHs(mol_pred)
-            if rank == 0: write_mol_with_coords(mol_pred, pos, os.path.join(write_dir, f'rank{rank+1}.sdf'))
-            write_mol_with_coords(mol_pred, pos, os.path.join(write_dir, f'rank{rank+1}_confidence{confidence[rank]:.2f}.sdf'))
+        # add special treatment if out_dir is a s3 bucket
+        if args.out_dir.startswith('s3://'):
 
-        # save visualisation frames
-        if args.save_visualisation:
-            if confidence is not None:
-                for rank, batch_idx in enumerate(re_order):
-                    visualization_list[batch_idx].write(os.path.join(write_dir, f'rank{rank+1}_reverseprocess.pdb'))
-            else:
-                for rank, batch_idx in enumerate(ligand_pos):
-                    visualization_list[batch_idx].write(os.path.join(write_dir, f'rank{rank+1}_reverseprocess.pdb'))
+            write_dir = f'{args.out_dir}{complex_name_list[idx]}'
+
+            for rank, pos in enumerate(ligand_pos):
+                mol_pred = copy.deepcopy(lig)
+                if score_model_args.remove_hs: mol_pred = RemoveHs(mol_pred)
+                if rank == 0:
+                    with File(f'{write_dir}/rank{rank+1}.sdf').open('w') as rank1sdf:
+                        write_mol_with_coords(mol_pred, pos, rank1sdf)
+
+                with File(f'{write_dir}/rank{rank+1}_confidence{confidence[rank]:.2f}.sdf').open('w') as f:          
+                    write_mol_with_coords(mol_pred, pos, f)
+
+            # save visualisation frames
+            if args.save_visualisation:
+                if confidence is not None:
+                    for rank, batch_idx in enumerate(re_order):
+                        visualization_list[batch_idx].write(f'{write_dir}/rank{rank+1}_reverseprocess.pdb')
+                else:
+                    for rank, batch_idx in enumerate(ligand_pos):
+                        visualization_list[batch_idx].write(f'{write_dir}/rank{rank+1}_reverseprocess.pdb')
+
+        else:
+            write_dir = f'{args.out_dir}/{complex_name_list[idx]}'
+            for rank, pos in enumerate(ligand_pos):
+                mol_pred = copy.deepcopy(lig)
+                if score_model_args.remove_hs: mol_pred = RemoveHs(mol_pred)
+                if rank == 0: write_mol_with_coords(mol_pred, pos, os.path.join(write_dir, f'rank{rank+1}.sdf'))
+                write_mol_with_coords(mol_pred, pos, os.path.join(write_dir, f'rank{rank+1}_confidence{confidence[rank]:.2f}.sdf'))
+
+            # save visualisation frames
+            if args.save_visualisation:
+                if confidence is not None:
+                    for rank, batch_idx in enumerate(re_order):
+                        visualization_list[batch_idx].write(os.path.join(write_dir, f'rank{rank+1}_reverseprocess.pdb'))
+                else:
+                    for rank, batch_idx in enumerate(ligand_pos):
+                        visualization_list[batch_idx].write(os.path.join(write_dir, f'rank{rank+1}_reverseprocess.pdb'))
 
     except Exception as e:
         print("Failed on", orig_complex_graph["name"], e)
@@ -192,3 +221,12 @@ print(f'Skipped {skipped} complexes')
 print(f'Results are in {args.out_dir}')
 
 
+
+def write_mol_with_coords(mol, new_coords, path):
+    w = Chem.SDWriter(path)
+    conf = mol.GetConformer()
+    for i in range(mol.GetNumAtoms()):
+        x,y,z = new_coords.astype(np.double)[i]
+        conf.SetAtomPosition(i,Point3D(x,y,z))
+    w.write(mol)
+    w.close()

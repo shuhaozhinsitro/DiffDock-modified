@@ -5,6 +5,7 @@ from collections import defaultdict
 import copy
 import numpy as np
 import torch
+from redun import File
 
     
 class PDBFile:
@@ -48,5 +49,11 @@ class PDBFile:
                     str_ += '\nENDMDL\n'
         if not path:
             return str_
-        with open(path, 'w') as f:
-            f.write(str_)
+        
+        #add special treatment for if path is a s3 path
+        if path.startswith('s3://'):
+            with File(path).open('w') as f:
+                f.write(str_)
+        else:
+            with open(path, 'w') as f:
+                f.write(str_)
