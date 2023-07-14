@@ -50,7 +50,7 @@ class PDBFile:
         if not path:
             return str_
         
-        #add special treatment for if path is a s3 path
+        #add special treatment for s3 path
         if path.startswith('s3://'):
             with File(path).open('w') as f:
                 f.write(str_)

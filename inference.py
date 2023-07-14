@@ -219,14 +219,3 @@ for idx, orig_complex_graph in tqdm(enumerate(test_loader)):
 print(f'Failed for {failures} complexes')
 print(f'Skipped {skipped} complexes')
 print(f'Results are in {args.out_dir}')
-
-
-
-def write_mol_with_coords(mol, new_coords, path):
-    w = Chem.SDWriter(path)
-    conf = mol.GetConformer()
-    for i in range(mol.GetNumAtoms()):
-        x,y,z = new_coords.astype(np.double)[i]
-        conf.SetAtomPosition(i,Point3D(x,y,z))
-    w.write(mol)
-    w.close()

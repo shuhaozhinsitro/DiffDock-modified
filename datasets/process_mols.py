@@ -21,6 +21,9 @@ import torch.nn.functional as F
 from datasets.conformer_matching import get_torsion_angles, optimize_rotatable_bonds
 from utils.torsion import get_transformation_mask
 
+# added redun.File to read protein files from s3 bucket
+from redun import File
+
 
 biopython_parser = PDBParser()
 periodic_table = GetPeriodicTable()
@@ -141,10 +144,22 @@ def parsePDB(pdbid, pdbbind_dir):
     rec_path = os.path.join(pdbbind_dir, pdbid, f'{pdbid}_protein_processed.pdb')
     return parse_pdb_from_path(rec_path)
 
+'''
 def parse_pdb_from_path(path):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=PDBConstructionWarning)
         structure = biopython_parser.get_structure('random_id', path)
+        rec = structure[0]
+    return rec
+'''
+
+def parse_pdb_from_path(path):
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=PDBConstructionWarning)
+        if path.startswith('s3://'):
+            structure = biopython_parser.get_structure('random_id', File(path).open('r'))
+        else:
+            structure = biopython_parser.get_structure('random_id', path)
         rec = structure[0]
     return rec
 

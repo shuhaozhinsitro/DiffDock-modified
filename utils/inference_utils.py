@@ -10,6 +10,7 @@ import esm
 from datasets.process_mols import parse_pdb_from_path, generate_conformer, read_molecule, get_lig_graph_with_matching, \
     extract_receptor_structure, get_rec_graph
 
+from redun import File
 
 three_to_one = {'ALA':	'A',
 'ARG':	'R',
@@ -41,7 +42,10 @@ three_to_one = {'ALA':	'A',
 
 def get_sequences_from_pdbfile(file_path):
     biopython_parser = PDBParser()
-    structure = biopython_parser.get_structure('random_id', file_path)
+    if file_path.startswith('s3://'):
+        structure = biopython_parser.get_structure('random_id', File(file_path).open('r'))
+    else:
+        structure = biopython_parser.get_structure('random_id', file_path)
     structure = structure[0]
     sequence = None
     for i, chain in enumerate(structure):
